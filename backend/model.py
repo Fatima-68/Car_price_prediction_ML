@@ -1,63 +1,42 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
+from xgboost import XGBRegressor
 import joblib
 
-# Load your CSV
-data = pd.read_csv("car_prices.csv")
+# Load data
+df = pd.read_csv("car_prices.csv")
 
-data = data.drop(['make', 'vin', 'color'], axis=1)
+# Minimal useful columns
+df = df[['year','make','model','trim', 'body', 'transmission', 'state', 'condition', 'odometer','seller', 'mmr', 'sellingprice']]
+df = df.dropna()
 
-# Dropping the duplicates 
-data = data.drop_duplicates()
-# 🧼 Drop rows with missing target values
-data = data.dropna(subset=['sellingprice']) 
-data =data.dropna()
+X = df.drop("sellingprice", axis=1)
+y = df["sellingprice"]
 
-# Select only numeric columns for IQR calculation
-numeric_data = data.select_dtypes(include=['float64', 'int64'])
+# Categorical and numerical
+cat_cols = ['make','model','trim','body', 'transmission', 'state','seller',]
+num_cols = ['year', 'condition', 'odometer', 'mmr']
 
-# Now compute quantiles and IQR only on numeric columns
-Q1 = numeric_data.quantile(0.25)
-Q3 = numeric_data.quantile(0.75)
-IQR = Q3 - Q1
-
-# Filter out outliers based on IQR
-data = data[~((numeric_data < (Q1 - 1.5 * IQR)) | (numeric_data > (Q3 + 1.5 * IQR))).any(axis=1)]
-# Define target and features
-X = data.drop("sellingprice", axis=1)
-y = data["sellingprice"]
-
-# Optionally drop rows with missing features (or handle them better later)
-X = X.dropna()
-
-# Identify categorical & numerical columns
-categorical = X.select_dtypes(include=["object"]).columns
-numerical = X.select_dtypes(exclude=["object"]).columns
-
-# Preprocessing
+# Preprocessor
 preprocessor = ColumnTransformer([
-    ('cat', OneHotEncoder(handle_unknown='ignore'), categorical)
-], remainder='passthrough')
-data = data.sample(100, random_state=42)
-# Pipeline
+    ("cat", OneHotEncoder(handle_unknown="ignore"), cat_cols)
+], remainder="passthrough")
+
+# Model pipeline with XGBoost
 model = Pipeline([
-    ('preprocessor', preprocessor),
-    ('regressor', RandomForestRegressor(n_estimators=5, random_state=42))
+    ("preprocessor", preprocessor),
+    ("regressor", XGBRegressor(n_estimators=50, max_depth=5, learning_rate=0.1, random_state=42))
 ])
 
-# Split & Train
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-print("✅ Data prepared")
-print("Shape of X_train:", X_train.shape)
-print("Shape of y_train:", y_train.shape)
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=42)
 
+# Fit model
 model.fit(X_train, y_train)
 
-print("✅ Model training complete")
-# Save the model
+# Save
 joblib.dump(model, "best_model.pkl")
-print("✅ Model trained and saved as best_model.pkl")
+print(" XGBoost model trained and saved as best_model.pkl")
